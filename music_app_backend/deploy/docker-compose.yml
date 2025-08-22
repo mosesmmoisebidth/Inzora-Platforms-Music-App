@@ -1,0 +1,82 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: music_app_postgres
+    environment:
+      POSTGRES_DB: music_app
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: music_app_password
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - music_app_network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: music_app_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - music_app_network
+
+  # Music App Backend
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: music_app_backend
+    ports:
+      - "8080:8080"
+    environment:
+      MUSIC_APP_APP_ENVIRONMENT: development
+      MUSIC_APP_SERVER_PORT: 8080
+      MUSIC_APP_DATABASE_HOST: postgres
+      MUSIC_APP_DATABASE_PORT: 5432
+      MUSIC_APP_DATABASE_USER: postgres
+      MUSIC_APP_DATABASE_PASSWORD: music_app_password
+      MUSIC_APP_DATABASE_NAME: music_app
+      MUSIC_APP_REDIS_ADDR: redis:6379
+      MUSIC_APP_AUTH_JWT_ACCESS_SECRET: dev_jwt_access_secret_change_in_production
+      MUSIC_APP_AUTH_JWT_REFRESH_SECRET: dev_jwt_refresh_secret_change_in_production
+      MUSIC_APP_PROVIDERS_ENABLED: itunes
+      MUSIC_APP_GOOGLE_CLIENT_ID: your-google-client-id.apps.googleusercontent.com
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8085/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - music_app_network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  music_app_network:
+    driver: bridge
